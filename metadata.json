@@ -1,0 +1,6 @@
+{
+  "name": "BizPilot AI",
+  "description": "Full-stack AI-powered business operations, inventory, sales, finance, and invoicing command center.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

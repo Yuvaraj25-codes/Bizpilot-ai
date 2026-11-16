@@ -1,0 +1,544 @@
+{
+  "id": "public-demo",
+  "products": [
+    {
+      "id": "prod-1",
+      "sku": "BP-KEY-01",
+      "name": "Vortex 75% Mechanical Keyboard",
+      "category": "Peripherals",
+      "costPrice": 68,
+      "retailPrice": 149,
+      "stockQty": 34,
+      "lowStockThreshold": 10,
+      "updatedAt": "2026-11-14T10:00:00.000Z"
+    },
+    {
+      "id": "prod-2",
+      "sku": "BP-MON-04",
+      "name": "Lumix 27\" 4K IPS Studio Monitor",
+      "category": "Displays",
+      "costPrice": 245,
+      "retailPrice": 449,
+      "stockQty": 6,
+      "lowStockThreshold": 8,
+      "updatedAt": "2026-11-15T10:00:00.000Z"
+    },
+    {
+      "id": "prod-3",
+      "sku": "BP-DOC-09",
+      "name": "ThunderDock Pro Thunderbolt 4 Hub",
+      "category": "Connectivity",
+      "costPrice": 82,
+      "retailPrice": 189,
+      "stockQty": 22,
+      "lowStockThreshold": 8,
+      "updatedAt": "2026-11-13T10:00:00.000Z"
+    },
+    {
+      "id": "prod-4",
+      "sku": "BP-AUD-12",
+      "name": "Aether Studio ANC Headset",
+      "category": "Audio",
+      "costPrice": 95,
+      "retailPrice": 229,
+      "stockQty": 4,
+      "lowStockThreshold": 10,
+      "updatedAt": "2026-11-15T10:00:00.000Z"
+    },
+    {
+      "id": "prod-5",
+      "sku": "BP-ERG-03",
+      "name": "AeroLift Dual Monitor Arm",
+      "category": "Ergonomics",
+      "costPrice": 42,
+      "retailPrice": 119,
+      "stockQty": 0,
+      "lowStockThreshold": 6,
+      "updatedAt": "2026-11-12T10:00:00.000Z"
+    },
+    {
+      "id": "prod-6",
+      "sku": "BP-CAM-07",
+      "name": "OpticStream 4K Desk Webcam",
+      "category": "Video",
+      "costPrice": 54,
+      "retailPrice": 139,
+      "stockQty": 19,
+      "lowStockThreshold": 8,
+      "updatedAt": "2026-11-14T10:00:00.000Z"
+    },
+    {
+      "id": "prod-7",
+      "sku": "BP-PWR-15",
+      "name": "GaN 140W Multi-Port Desk Charger",
+      "category": "Power",
+      "costPrice": 31,
+      "retailPrice": 79,
+      "stockQty": 5,
+      "lowStockThreshold": 12,
+      "updatedAt": "2026-11-15T10:00:00.000Z"
+    }
+  ],
+  "orders": [
+    {
+      "id": "ord-101",
+      "orderNumber": "ORD-2084",
+      "customerName": "Northstar Design Studio",
+      "customerPhone": "+1 (415) 890-2314",
+      "status": "completed",
+      "items": [
+        {
+          "productId": "prod-2",
+          "sku": "BP-MON-04",
+          "productName": "Lumix 27\" 4K IPS Studio Monitor",
+          "quantity": 2,
+          "unitPrice": 449,
+          "unitCost": 245
+        },
+        {
+          "productId": "prod-3",
+          "sku": "BP-DOC-09",
+          "productName": "ThunderDock Pro Thunderbolt 4 Hub",
+          "quantity": 2,
+          "unitPrice": 189,
+          "unitCost": 82
+        }
+      ],
+      "totalAmount": 1276,
+      "totalCost": 654,
+      "createdAt": "2026-11-16T18:35:16.664Z"
+    },
+    {
+      "id": "ord-102",
+      "orderNumber": "ORD-2083",
+      "customerName": "Elena Rostova",
+      "customerPhone": "+1 (212) 641-9902",
+      "status": "completed",
+      "items": [
+        {
+          "productId": "prod-1",
+          "sku": "BP-KEY-01",
+          "productName": "Vortex 75% Mechanical Keyboard",
+          "quantity": 2,
+          "unitPrice": 149,
+          "unitCost": 68
+        },
+        {
+          "productId": "prod-6",
+          "sku": "BP-CAM-07",
+          "productName": "OpticStream 4K Desk Webcam",
+          "quantity": 1,
+          "unitPrice": 139,
+          "unitCost": 54
+        }
+      ],
+      "totalAmount": 437,
+      "totalCost": 190,
+      "createdAt": "2026-11-16T16:35:16.664Z"
+    },
+    {
+      "id": "ord-103",
+      "orderNumber": "ORD-2082",
+      "customerName": "Kestrel Robotics Lab",
+      "customerPhone": "+1 (650) 412-7731",
+      "status": "pending",
+      "items": [
+        {
+          "productId": "prod-4",
+          "sku": "BP-AUD-12",
+          "productName": "Aether Studio ANC Headset",
+          "quantity": 3,
+          "unitPrice": 229,
+          "unitCost": 95
+        },
+        {
+          "productId": "prod-7",
+          "sku": "BP-PWR-15",
+          "productName": "GaN 140W Multi-Port Desk Charger",
+          "quantity": 4,
+          "unitPrice": 79,
+          "unitCost": 31
+        }
+      ],
+      "totalAmount": 1003,
+      "totalCost": 409,
+      "createdAt": "2026-11-16T19:05:16.664Z"
+    },
+    {
+      "id": "ord-104",
+      "orderNumber": "ORD-2081",
+      "customerName": "Marcus Vance",
+      "customerPhone": "+1 (312) 554-8120",
+      "status": "completed",
+      "items": [
+        {
+          "productId": "prod-2",
+          "sku": "BP-MON-04",
+          "productName": "Lumix 27\" 4K IPS Studio Monitor",
+          "quantity": 1,
+          "unitPrice": 449,
+          "unitCost": 245
+        },
+        {
+          "productId": "prod-1",
+          "sku": "BP-KEY-01",
+          "productName": "Vortex 75% Mechanical Keyboard",
+          "quantity": 1,
+          "unitPrice": 149,
+          "unitCost": 68
+        }
+      ],
+      "totalAmount": 598,
+      "totalCost": 313,
+      "createdAt": "2026-11-15T14:20:00.000Z"
+    },
+    {
+      "id": "ord-105",
+      "orderNumber": "ORD-2080",
+      "customerName": "Horizon Media Group",
+      "customerPhone": "+1 (512) 778-3044",
+      "status": "completed",
+      "items": [
+        {
+          "productId": "prod-4",
+          "sku": "BP-AUD-12",
+          "productName": "Aether Studio ANC Headset",
+          "quantity": 4,
+          "unitPrice": 229,
+          "unitCost": 95
+        },
+        {
+          "productId": "prod-6",
+          "sku": "BP-CAM-07",
+          "productName": "OpticStream 4K Desk Webcam",
+          "quantity": 3,
+          "unitPrice": 139,
+          "unitCost": 54
+        }
+      ],
+      "totalAmount": 1333,
+      "totalCost": 542,
+      "createdAt": "2026-11-14T11:10:00.000Z"
+    },
+    {
+      "id": "ord-106",
+      "orderNumber": "ORD-2079",
+      "customerName": "Atlas FinTech Ops",
+      "customerPhone": "+1 (646) 290-4511",
+      "status": "completed",
+      "items": [
+        {
+          "productId": "prod-3",
+          "sku": "BP-DOC-09",
+          "productName": "ThunderDock Pro Thunderbolt 4 Hub",
+          "quantity": 3,
+          "unitPrice": 189,
+          "unitCost": 82
+        },
+        {
+          "productId": "prod-7",
+          "sku": "BP-PWR-15",
+          "productName": "GaN 140W Multi-Port Desk Charger",
+          "quantity": 5,
+          "unitPrice": 79,
+          "unitCost": 31
+        }
+      ],
+      "totalAmount": 962,
+      "totalCost": 401,
+      "createdAt": "2026-11-12T16:45:00.000Z"
+    },
+    {
+      "id": "ord-107",
+      "orderNumber": "ORD-2078",
+      "customerName": "Sora Creative Collective",
+      "customerPhone": "+1 (206) 934-1189",
+      "status": "completed",
+      "items": [
+        {
+          "productId": "prod-2",
+          "sku": "BP-MON-04",
+          "productName": "Lumix 27\" 4K IPS Studio Monitor",
+          "quantity": 3,
+          "unitPrice": 449,
+          "unitCost": 245
+        },
+        {
+          "productId": "prod-1",
+          "sku": "BP-KEY-01",
+          "productName": "Vortex 75% Mechanical Keyboard",
+          "quantity": 3,
+          "unitPrice": 149,
+          "unitCost": 68
+        }
+      ],
+      "totalAmount": 1794,
+      "totalCost": 939,
+      "createdAt": "2026-11-10T13:15:00.000Z"
+    },
+    {
+      "id": "ord-108",
+      "orderNumber": "ORD-2077",
+      "customerName": "Brightline Architecture",
+      "customerPhone": "+1 (303) 618-7422",
+      "status": "completed",
+      "items": [
+        {
+          "productId": "prod-2",
+          "sku": "BP-MON-04",
+          "productName": "Lumix 27\" 4K IPS Studio Monitor",
+          "quantity": 4,
+          "unitPrice": 449,
+          "unitCost": 245
+        },
+        {
+          "productId": "prod-3",
+          "sku": "BP-DOC-09",
+          "productName": "ThunderDock Pro Thunderbolt 4 Hub",
+          "quantity": 4,
+          "unitPrice": 189,
+          "unitCost": 82
+        }
+      ],
+      "totalAmount": 2552,
+      "totalCost": 1308,
+      "createdAt": "2026-11-04T10:30:00.000Z"
+    },
+    {
+      "id": "ord-109",
+      "orderNumber": "ORD-2076",
+      "customerName": "Apex Cloud Systems",
+      "customerPhone": "+1 (408) 701-5590",
+      "status": "completed",
+      "items": [
+        {
+          "productId": "prod-1",
+          "sku": "BP-KEY-01",
+          "productName": "Vortex 75% Mechanical Keyboard",
+          "quantity": 6,
+          "unitPrice": 149,
+          "unitCost": 68
+        },
+        {
+          "productId": "prod-4",
+          "sku": "BP-AUD-12",
+          "productName": "Aether Studio ANC Headset",
+          "quantity": 2,
+          "unitPrice": 229,
+          "unitCost": 95
+        }
+      ],
+      "totalAmount": 1352,
+      "totalCost": 598,
+      "createdAt": "2026-10-28T15:00:00.000Z"
+    },
+    {
+      "id": "ord-110",
+      "orderNumber": "ORD-2075",
+      "customerName": "Cobalt Ventures",
+      "customerPhone": "+1 (617) 842-3319",
+      "status": "completed",
+      "items": [
+        {
+          "productId": "prod-2",
+          "sku": "BP-MON-04",
+          "productName": "Lumix 27\" 4K IPS Studio Monitor",
+          "quantity": 5,
+          "unitPrice": 449,
+          "unitCost": 245
+        },
+        {
+          "productId": "prod-6",
+          "sku": "BP-CAM-07",
+          "productName": "OpticStream 4K Desk Webcam",
+          "quantity": 5,
+          "unitPrice": 139,
+          "unitCost": 54
+        }
+      ],
+      "totalAmount": 2940,
+      "totalCost": 1495,
+      "createdAt": "2026-10-20T12:00:00.000Z"
+    },
+    {
+      "id": "ord-111",
+      "orderNumber": "ORD-2074",
+      "customerName": "Meridian Digital",
+      "customerPhone": "+1 (415) 391-8022",
+      "status": "completed",
+      "items": [
+        {
+          "productId": "prod-3",
+          "sku": "BP-DOC-09",
+          "productName": "ThunderDock Pro Thunderbolt 4 Hub",
+          "quantity": 6,
+          "unitPrice": 189,
+          "unitCost": 82
+        },
+        {
+          "productId": "prod-1",
+          "sku": "BP-KEY-01",
+          "productName": "Vortex 75% Mechanical Keyboard",
+          "quantity": 4,
+          "unitPrice": 149,
+          "unitCost": 68
+        }
+      ],
+      "totalAmount": 1730,
+      "totalCost": 764,
+      "createdAt": "2026-09-29T11:00:00.000Z"
+    }
+  ],
+  "expenses": [
+    {
+      "id": "exp-1",
+      "title": "Meta & Search Performance Ads",
+      "category": "Marketing",
+      "amount": 340,
+      "date": "2026-11-16T17:35:16.664Z",
+      "notes": "Q4 workstation hardware campaign"
+    },
+    {
+      "id": "exp-2",
+      "title": "Express Courier & Fulfillment Batch",
+      "category": "Logistics",
+      "amount": 165,
+      "date": "2026-11-15T09:30:00.000Z",
+      "notes": "Same-day metro deliveries"
+    },
+    {
+      "id": "exp-3",
+      "title": "Cloud ERP & Telemetry Subscriptions",
+      "category": "Software",
+      "amount": 189,
+      "date": "2026-11-13T10:00:00.000Z",
+      "notes": "Monthly SaaS stack"
+    },
+    {
+      "id": "exp-4",
+      "title": "Part-Time Warehouse Fulfillment Payroll",
+      "category": "Payroll",
+      "amount": 1450,
+      "date": "2026-11-11T17:00:00.000Z",
+      "notes": "Bi-weekly operations crew"
+    },
+    {
+      "id": "exp-5",
+      "title": "Warehouse Climate & Fiber Internet",
+      "category": "Utilities",
+      "amount": 260,
+      "date": "2026-11-05T08:45:00.000Z",
+      "notes": "Facility utilities"
+    },
+    {
+      "id": "exp-6",
+      "title": "Packaging & Anti-Static Sleeves",
+      "category": "Inventory Restock",
+      "amount": 420,
+      "date": "2026-10-29T14:00:00.000Z",
+      "notes": "Bulk protective cartons"
+    },
+    {
+      "id": "exp-7",
+      "title": "Trade Expo Booth & Collateral",
+      "category": "Marketing",
+      "amount": 950,
+      "date": "2026-10-02T12:00:00.000Z",
+      "notes": "Regional B2B showcase"
+    }
+  ],
+  "invoices": [
+    {
+      "id": "inv-1",
+      "invoiceNumber": "INV-2084",
+      "orderId": "ord-101",
+      "customerName": "Northstar Design Studio",
+      "customerPhone": "+1 (415) 890-2314",
+      "customerEmail": "ap@northstardesign.io",
+      "items": [
+        {
+          "description": "Lumix 27\" 4K IPS Studio Monitor (BP-MON-04)",
+          "quantity": 2,
+          "unitPrice": 449
+        },
+        {
+          "description": "ThunderDock Pro Thunderbolt 4 Hub (BP-DOC-09)",
+          "quantity": 2,
+          "unitPrice": 189
+        }
+      ],
+      "subtotal": 1276,
+      "taxRate": 8.5,
+      "taxAmount": 108.46,
+      "totalAmount": 1384.46,
+      "status": "paid",
+      "issuedAt": "2026-11-16T18:35:16.664Z",
+      "dueDate": "2026-11-30T10:00:00.000Z"
+    },
+    {
+      "id": "inv-2",
+      "invoiceNumber": "INV-2082",
+      "orderId": "ord-103",
+      "customerName": "Kestrel Robotics Lab",
+      "customerPhone": "+1 (650) 412-7731",
+      "customerEmail": "procurement@kestrelrobotics.ai",
+      "items": [
+        {
+          "description": "Aether Studio ANC Headset (BP-AUD-12)",
+          "quantity": 3,
+          "unitPrice": 229
+        },
+        {
+          "description": "GaN 140W Multi-Port Desk Charger (BP-PWR-15)",
+          "quantity": 4,
+          "unitPrice": 79
+        }
+      ],
+      "subtotal": 1003,
+      "taxRate": 8.5,
+      "taxAmount": 85.26,
+      "totalAmount": 1088.26,
+      "status": "sent",
+      "issuedAt": "2026-11-16T19:05:16.664Z",
+      "dueDate": "2026-12-01T10:00:00.000Z"
+    },
+    {
+      "id": "inv-3",
+      "invoiceNumber": "INV-2079",
+      "orderId": "ord-106",
+      "customerName": "Atlas FinTech Ops",
+      "customerPhone": "+1 (646) 290-4511",
+      "customerEmail": "finance@atlasfintech.com",
+      "items": [
+        {
+          "description": "ThunderDock Pro Thunderbolt 4 Hub (BP-DOC-09)",
+          "quantity": 3,
+          "unitPrice": 189
+        },
+        {
+          "description": "GaN 140W Multi-Port Desk Charger (BP-PWR-15)",
+          "quantity": 5,
+          "unitPrice": 79
+        }
+      ],
+      "subtotal": 962,
+      "taxRate": 8.5,
+      "taxAmount": 81.77,
+      "totalAmount": 1043.77,
+      "status": "paid",
+      "issuedAt": "2026-11-12T16:45:00.000Z",
+      "dueDate": "2026-11-26T10:00:00.000Z"
+    }
+  ],
+  "settings": {
+    "businessName": "BizPilot Hardware & Ops",
+    "currency": "USD",
+    "publicMode": false,
+    "telemetryAlerts": true,
+    "lowStockDefault": 10,
+    "cloudSyncEnabled": false,
+    "syncCode": "PUBLIC-DEMO",
+    "lastSyncedAt": "2026-11-16T19:35:16.665Z"
+  },
+  "updatedAt": "2026-11-16T19:35:16.665Z"
+}
