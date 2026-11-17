@@ -174,24 +174,35 @@ export const api = {
       }
     );
   },
-  generateDailyBrief() {
+  generateDailyBrief(workspaceSnapshot?: WorkspaceData) {
     return request<{ brief: DailyAiBrief }>('/api/ai/daily-brief', {
       method: 'POST',
+      body: JSON.stringify(workspaceSnapshot ? { workspaceSnapshot } : {}),
     });
   },
   sendPilotMessage(
     message: string,
     history: ChatMessage[],
-    range: DateRangeKey
+    range: DateRangeKey,
+    workspaceSnapshot?: WorkspaceData
   ) {
     return request<{
       reply: string;
       actionsTaken: AiActionReceipt[];
+      executedActions?: {
+        tool: 'recordExpense' | 'createOrder' | 'createInvoice' | 'restockProduct';
+        args: Record<string, any>;
+      }[];
       workspace: WorkspaceData;
       analytics: AnalyticsSummary;
     }>('/api/ai/pilot', {
       method: 'POST',
-      body: JSON.stringify({ message, history, range }),
+      body: JSON.stringify({
+        message,
+        history,
+        range,
+        ...(workspaceSnapshot ? { workspaceSnapshot } : {}),
+      }),
     });
   },
 };

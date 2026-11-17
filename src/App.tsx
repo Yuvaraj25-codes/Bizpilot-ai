@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, MotionConfig } from 'framer-motion';
+import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
 import {
   BarChart3,
   Bot,
+  Database,
   Eye,
   EyeOff,
   Landmark,
@@ -29,11 +31,28 @@ import type {
   WorkspaceData,
   WorkspaceSettings,
 } from '../shared/types.ts';
+import { computeAnalytics } from '../shared/analytics.ts';
 import {
   api,
   getActiveWorkspaceId,
   setActiveWorkspaceId,
 } from './lib/api.ts';
+import { auth, googleProvider } from './lib/firebase.ts';
+import {
+  createExpenseInFirestore,
+  createInvoiceInFirestore,
+  createOrderInFirestore,
+  deleteExpenseInFirestore,
+  deleteProductInFirestore,
+  ensureUserWorkspaceInFirestore,
+  resetFirestoreWorkspace,
+  restockProductInFirestore,
+  saveSettingsInFirestore,
+  subscribeUserWorkspace,
+  updateInvoiceStatusInFirestore,
+  updateOrderStatusInFirestore,
+  upsertProductInFirestore,
+} from './lib/firestoreWorkspace.ts';
 import { DashboardView } from './components/DashboardView.tsx';
 import { InventoryView } from './components/InventoryView.tsx';
 import { SalesView } from './components/SalesView.tsx';
@@ -68,10 +87,21 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const [workspace, setWorkspace] = useState<WorkspaceData | null>(null);
-  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
+  const [publicWorkspace, setPublicWorkspace] = useState<WorkspaceData | null>(
+    null
+  );
+  const [publicAnalytics, setPublicAnalytics] =
+    useState<AnalyticsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Firebase Auth & Firestore Cloud Sync state
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
+  const [firestoreWorkspace, setFirestoreWorkspace] =
+    useState<WorkspaceData | null>(null);
+  const [firebaseSyncing, setFirebaseSyncing] = useState(false);
+  const [firebaseError, setFirebaseError] = useState<string | null>(null);
+  const publicWorkspaceRef = useRef<WorkspaceData | null>(null);
 
   const [dateRange, setDateRange] = useState<DateRangeKey>('30d');
   const [sectionFilter, setSectionFilter] = useState<SectionFilter>('all');
@@ -98,8 +128,9 @@ export default function App() {
     try {
       setLoadError(null);
       const res = await api.fetchWorkspace(range);
-      setWorkspace(res.workspace);
-      setAnalytics(res.analytics);
+      publicWorkspaceRef.current = res.workspace;
+      setPublicWorkspace(res.workspace);
+      setPublicAnalytics(res.analytics);
     } catch (err: any) {
       setLoadError(err?.message || 'Unable to connect to BizPilot server.');
     } finally {
@@ -110,6 +141,79 @@ export default function App() {
   useEffect(() => {
     loadWorkspace(dateRange);
   }, [dateRange, loadWorkspace]);
+
+  // Listen to Firebase Auth state & sync Firestore workspace when signed in
+  useEffect(() => {
+    let unsubFirestore: (() => void) | null = null;
+    let cancelled = false;
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (unsubFirestore) {
+        unsubFirestore();
+        unsubFirestore = null;
+      }
+
+      if (!user) {
+        setFirebaseUser(null);
+        setFirestoreWorkspace(null);
+        setFirebaseSyncing(false);
+        return;
+      }
+
+      if (!user.emailVerified) {
+        setFirebaseError(
+          'Please verify your Google account email to activate Firestore Cloud Sync.'
+        );
+        setFirebaseUser(null);
+        setFirestoreWorkspace(null);
+        setFirebaseSyncing(false);
+        return;
+      }
+
+      setFirebaseUser(user);
+      setFirebaseError(null);
+      setFirebaseSyncing(true);
+
+      try {
+        const seed =
+          publicWorkspaceRef.current ??
+          (await api.fetchWorkspace('30d')).workspace;
+        if (cancelled) return;
+        await ensureUserWorkspaceInFirestore(
+          user.uid,
+          user.email || '',
+          user.displayName || '',
+          seed
+        );
+        if (cancelled) return;
+
+        unsubFirestore = subscribeUserWorkspace(
+          user.uid,
+          (ws) => {
+            setFirestoreWorkspace(ws);
+            setFirebaseSyncing(false);
+          },
+          (err) => {
+            setFirebaseError(err.message);
+            setFirebaseSyncing(false);
+          }
+        );
+      } catch (err: any) {
+        if (!cancelled) {
+          setFirebaseError(
+            err?.message || 'Failed to initialize Firestore workspace.'
+          );
+          setFirebaseSyncing(false);
+        }
+      }
+    });
+
+    return () => {
+      cancelled = true;
+      if (unsubFirestore) unsubFirestore();
+      unsubAuth();
+    };
+  }, []);
 
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -122,28 +226,167 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
+  const workspace =
+    firebaseUser && firestoreWorkspace ? firestoreWorkspace : publicWorkspace;
+
+  const analytics = useMemo(() => {
+    if (firebaseUser && firestoreWorkspace) {
+      return computeAnalytics(firestoreWorkspace, dateRange);
+    }
+    return publicAnalytics;
+  }, [firebaseUser, firestoreWorkspace, dateRange, publicAnalytics]);
+
   const applyResponse = (res: {
     workspace: WorkspaceData;
     analytics: AnalyticsSummary;
   }) => {
-    setWorkspace(res.workspace);
-    setAnalytics(res.analytics);
+    publicWorkspaceRef.current = res.workspace;
+    setPublicWorkspace(res.workspace);
+    setPublicAnalytics(res.analytics);
+  };
+
+  const handleFirebaseSignIn = async () => {
+    setFirebaseError(null);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err: any) {
+      setFirebaseError(err?.message || 'Google sign-in was cancelled or failed.');
+      throw err;
+    }
+  };
+
+  const handleFirebaseSignOut = async () => {
+    setFirebaseError(null);
+    await signOut(auth);
+  };
+
+  const handleSaveSettings = async (patch: Partial<WorkspaceSettings>) => {
+    if (firebaseUser) {
+      await saveSettingsInFirestore(firebaseUser.uid, patch);
+    } else {
+      applyResponse(await api.updateSettings(patch, dateRange));
+    }
   };
 
   const handleTogglePublicMode = async () => {
     if (!workspace) return;
     const next = !workspace.settings.publicMode;
-    const res = await api.updateSettings({ publicMode: next }, dateRange);
-    applyResponse(res);
+    await handleSaveSettings({ publicMode: next });
   };
 
   const handleQuickRestock = async (productId: string) => {
     setRestockingId(productId);
     try {
-      const res = await api.restockProduct(productId, 10, dateRange);
-      applyResponse(res);
+      if (firebaseUser && workspace) {
+        const prod = workspace.products.find((p) => p.id === productId);
+        if (prod) {
+          await restockProductInFirestore(firebaseUser.uid, prod, 10);
+        }
+      } else {
+        const res = await api.restockProduct(productId, 10, dateRange);
+        applyResponse(res);
+      }
     } finally {
       setRestockingId(null);
+    }
+  };
+
+  const handleCreateProduct = async (p: Omit<Product, 'id' | 'updatedAt'>) => {
+    if (firebaseUser) {
+      await upsertProductInFirestore(firebaseUser.uid, p);
+    } else {
+      applyResponse(await api.createProduct(p, dateRange));
+    }
+  };
+
+  const handleUpdateProduct = async (
+    id: string,
+    p: Omit<Product, 'id' | 'updatedAt'>
+  ) => {
+    if (firebaseUser) {
+      await upsertProductInFirestore(firebaseUser.uid, { ...p, id });
+    } else {
+      applyResponse(await api.updateProduct(id, p, dateRange));
+    }
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (firebaseUser) {
+      await deleteProductInFirestore(firebaseUser.uid, id);
+    } else {
+      applyResponse(await api.deleteProduct(id, dateRange));
+    }
+  };
+
+  const handleCreateOrder = async (payload: {
+    customerName: string;
+    customerPhone: string;
+    status: OrderStatus;
+    items: { productId: string; quantity: number }[];
+    autoCreateInvoice: boolean;
+  }) => {
+    if (firebaseUser && workspace) {
+      await createOrderInFirestore(firebaseUser.uid, workspace, payload);
+    } else {
+      applyResponse(await api.createOrder(payload, dateRange));
+    }
+  };
+
+  const handleUpdateOrderStatus = async (id: string, status: OrderStatus) => {
+    if (firebaseUser && workspace) {
+      await updateOrderStatusInFirestore(firebaseUser.uid, workspace, id, status);
+    } else {
+      applyResponse(await api.updateOrderStatus(id, status, dateRange));
+    }
+  };
+
+  const handleCreateExpense = async (payload: {
+    title: string;
+    category: ExpenseCategory;
+    amount: number;
+    date: string;
+    notes?: string;
+  }) => {
+    if (firebaseUser) {
+      await createExpenseInFirestore(firebaseUser.uid, payload);
+    } else {
+      applyResponse(await api.createExpense(payload, dateRange));
+    }
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (firebaseUser) {
+      await deleteExpenseInFirestore(firebaseUser.uid, id);
+    } else {
+      applyResponse(await api.deleteExpense(id, dateRange));
+    }
+  };
+
+  const handleCreateInvoice = async (payload: {
+    orderId?: string;
+    customerName: string;
+    customerPhone: string;
+    customerEmail: string;
+    taxRate: number;
+    dueDate: string;
+    status: InvoiceStatus;
+    items: { description: string; quantity: number; unitPrice: number }[];
+  }) => {
+    if (firebaseUser && workspace) {
+      await createInvoiceInFirestore(firebaseUser.uid, workspace, payload);
+    } else {
+      applyResponse(await api.createInvoice(payload, dateRange));
+    }
+  };
+
+  const handleUpdateInvoiceStatus = async (
+    id: string,
+    status: InvoiceStatus
+  ) => {
+    if (firebaseUser) {
+      await updateInvoiceStatusInFirestore(firebaseUser.uid, id, status);
+    } else {
+      applyResponse(await api.updateInvoiceStatus(id, status, dateRange));
     }
   };
 
@@ -153,7 +396,8 @@ export default function App() {
     setBriefLoading(true);
     setBriefError(null);
     try {
-      const res = await api.generateDailyBrief();
+      const snapshot = firebaseUser && workspace ? workspace : undefined;
+      const res = await api.generateDailyBrief(snapshot);
       setBriefData(res.brief);
     } catch (err: any) {
       setBriefError(err?.message || 'Failed to generate Daily AI Brief.');
@@ -175,8 +419,61 @@ export default function App() {
     setPilotSending(true);
 
     try {
-      const res = await api.sendPilotMessage(text, pilotMessages, dateRange);
-      applyResponse({ workspace: res.workspace, analytics: res.analytics });
+      const usingFirestore = Boolean(firebaseUser && workspace);
+      const res = await api.sendPilotMessage(
+        text,
+        pilotMessages,
+        dateRange,
+        usingFirestore ? workspace! : undefined
+      );
+
+      if (usingFirestore && firebaseUser && workspace) {
+        if (res.executedActions && res.executedActions.length > 0) {
+          for (const act of res.executedActions) {
+            if (act.tool === 'recordExpense') {
+              await createExpenseInFirestore(firebaseUser.uid, {
+                title: act.args.title,
+                category: act.args.category,
+                amount: act.args.amount,
+                date: act.args.date,
+                notes: act.args.notes,
+              });
+            } else if (act.tool === 'createOrder') {
+              await createOrderInFirestore(firebaseUser.uid, workspace, {
+                customerName: act.args.customerName,
+                customerPhone: act.args.customerPhone,
+                status: act.args.status,
+                items: act.args.items,
+                autoCreateInvoice: Boolean(act.args.autoCreateInvoice),
+              });
+            } else if (act.tool === 'createInvoice') {
+              await createInvoiceInFirestore(firebaseUser.uid, workspace, {
+                customerName: act.args.customerName,
+                customerPhone: act.args.customerPhone,
+                customerEmail: act.args.customerEmail,
+                taxRate: act.args.taxRate,
+                dueDate: act.args.dueDate,
+                status: act.args.status,
+                items: act.args.items,
+              });
+            } else if (act.tool === 'restockProduct') {
+              const target = workspace.products.find(
+                (p) => p.id === act.args.productId
+              );
+              if (target) {
+                await restockProductInFirestore(
+                  firebaseUser.uid,
+                  target,
+                  act.args.addQuantity
+                );
+              }
+            }
+          }
+        }
+      } else {
+        applyResponse({ workspace: res.workspace, analytics: res.analytics });
+      }
+
       const assistantMsg: ChatMessage = {
         id: `a-${Date.now()}`,
         role: 'assistant',
@@ -211,10 +508,24 @@ export default function App() {
   };
 
   const handleResetSession = async () => {
-    const res = await api.resetWorkspace(dateRange);
-    setBriefData(null);
-    setPilotMessages([]);
-    applyResponse(res);
+    if (firebaseUser) {
+      const seed =
+        publicWorkspaceRef.current ??
+        (await api.fetchWorkspace(dateRange)).workspace;
+      await resetFirestoreWorkspace(
+        firebaseUser.uid,
+        firebaseUser.email || '',
+        firebaseUser.displayName || '',
+        seed
+      );
+      setBriefData(null);
+      setPilotMessages([]);
+    } else {
+      const res = await api.resetWorkspace(dateRange);
+      setBriefData(null);
+      setPilotMessages([]);
+      applyResponse(res);
+    }
   };
 
   const navigateTo = (tab: NavTab) => {
@@ -312,9 +623,23 @@ export default function App() {
             <span>Settings</span>
           </button>
 
-          <div className="px-3.5 py-2 text-xs text-slate-500 font-mono truncate">
-            Workspace: {getActiveWorkspaceId().toUpperCase()}
-          </div>
+          <button
+            type="button"
+            onClick={() => navigateTo('settings')}
+            className="w-full px-3.5 py-2 text-left text-xs text-slate-400 hover:text-slate-200 font-mono truncate flex items-center gap-2 cursor-pointer"
+            title="Manage workspace & Firebase Cloud Sync"
+          >
+            <Database
+              className={`w-3.5 h-3.5 shrink-0 ${
+                firebaseUser ? 'text-[#22D3EE]' : 'text-slate-500'
+              }`}
+            />
+            <span className="truncate">
+              {firebaseUser
+                ? `Firestore: ${firebaseUser.email || firebaseUser.uid.slice(0, 8)}`
+                : `Workspace: ${getActiveWorkspaceId().toUpperCase()}`}
+            </span>
+          </button>
         </div>
       </aside>
 
@@ -489,15 +814,9 @@ export default function App() {
                   publicMode={workspace.settings.publicMode}
                   defaultThreshold={workspace.settings.lowStockDefault}
                   externalSearch={inventorySearch}
-                  onCreateProduct={async (p: Omit<Product, 'id' | 'updatedAt'>) =>
-                    applyResponse(await api.createProduct(p, dateRange))
-                  }
-                  onUpdateProduct={async (id, p) =>
-                    applyResponse(await api.updateProduct(id, p, dateRange))
-                  }
-                  onDeleteProduct={async (id) =>
-                    applyResponse(await api.deleteProduct(id, dateRange))
-                  }
+                  onCreateProduct={handleCreateProduct}
+                  onUpdateProduct={handleUpdateProduct}
+                  onDeleteProduct={handleDeleteProduct}
                   onQuickRestock={handleQuickRestock}
                   restockingId={restockingId}
                 />
@@ -510,18 +829,8 @@ export default function App() {
                   currency={workspace.settings.currency}
                   publicMode={workspace.settings.publicMode}
                   createOrderTrigger={createOrderTrigger}
-                  onCreateOrder={async (payload: {
-                    customerName: string;
-                    customerPhone: string;
-                    status: OrderStatus;
-                    items: { productId: string; quantity: number }[];
-                    autoCreateInvoice: boolean;
-                  }) => applyResponse(await api.createOrder(payload, dateRange))}
-                  onUpdateOrderStatus={async (id, status) =>
-                    applyResponse(
-                      await api.updateOrderStatus(id, status, dateRange)
-                    )
-                  }
+                  onCreateOrder={handleCreateOrder}
+                  onUpdateOrderStatus={handleUpdateOrderStatus}
                   onSelectOrder={(order: Order) => setSelectedOrderId(order.id)}
                 />
               )}
@@ -530,38 +839,10 @@ export default function App() {
                 <FinanceView
                   workspace={workspace}
                   analytics={analytics}
-                  onCreateExpense={async (payload: {
-                    title: string;
-                    category: ExpenseCategory;
-                    amount: number;
-                    date: string;
-                    notes?: string;
-                  }) =>
-                    applyResponse(await api.createExpense(payload, dateRange))
-                  }
-                  onDeleteExpense={async (id) =>
-                    applyResponse(await api.deleteExpense(id, dateRange))
-                  }
-                  onCreateInvoice={async (payload: {
-                    customerName: string;
-                    customerPhone: string;
-                    customerEmail: string;
-                    taxRate: number;
-                    dueDate: string;
-                    status: InvoiceStatus;
-                    items: {
-                      description: string;
-                      quantity: number;
-                      unitPrice: number;
-                    }[];
-                  }) =>
-                    applyResponse(await api.createInvoice(payload, dateRange))
-                  }
-                  onUpdateInvoiceStatus={async (id, status) =>
-                    applyResponse(
-                      await api.updateInvoiceStatus(id, status, dateRange)
-                    )
-                  }
+                  onCreateExpense={handleCreateExpense}
+                  onDeleteExpense={handleDeleteExpense}
+                  onCreateInvoice={handleCreateInvoice}
+                  onUpdateInvoiceStatus={handleUpdateInvoiceStatus}
                 />
               )}
 
@@ -576,9 +857,12 @@ export default function App() {
               {activeTab === 'settings' && (
                 <SettingsView
                   workspace={workspace}
-                  onSaveSettings={async (patch: Partial<WorkspaceSettings>) =>
-                    applyResponse(await api.updateSettings(patch, dateRange))
-                  }
+                  firebaseUser={firebaseUser}
+                  firebaseSyncing={firebaseSyncing}
+                  firebaseError={firebaseError}
+                  onFirebaseSignIn={handleFirebaseSignIn}
+                  onFirebaseSignOut={handleFirebaseSignOut}
+                  onSaveSettings={handleSaveSettings}
                   onResetSession={handleResetSession}
                   onCloudSync={handleCloudSync}
                 />
@@ -655,30 +939,24 @@ export default function App() {
             currency={workspace.settings.currency}
             publicMode={workspace.settings.publicMode}
             onClose={() => setSelectedOrderId(null)}
-            onUpdateStatus={async (id, status) =>
-              applyResponse(await api.updateOrderStatus(id, status, dateRange))
-            }
+            onUpdateStatus={handleUpdateOrderStatus}
             onGenerateInvoice={async (order) => {
-              const res = await api.createInvoice(
-                {
-                  orderId: order.id,
-                  customerName: order.customerName,
-                  customerPhone: order.customerPhone,
-                  customerEmail: '',
-                  taxRate: 8.5,
-                  dueDate: new Date(
-                    Date.now() + 14 * 24 * 60 * 60 * 1000
-                  ).toISOString(),
-                  status: order.status === 'completed' ? 'paid' : 'sent',
-                  items: order.items.map((item) => ({
-                    description: `${item.productName} (${item.sku})`,
-                    quantity: item.quantity,
-                    unitPrice: item.unitPrice,
-                  })),
-                },
-                dateRange
-              );
-              applyResponse(res);
+              await handleCreateInvoice({
+                orderId: order.id,
+                customerName: order.customerName,
+                customerPhone: order.customerPhone,
+                customerEmail: '',
+                taxRate: 8.5,
+                dueDate: new Date(
+                  Date.now() + 14 * 24 * 60 * 60 * 1000
+                ).toISOString(),
+                status: order.status === 'completed' ? 'paid' : 'sent',
+                items: order.items.map((item) => ({
+                  description: `${item.productName} (${item.sku})`,
+                  quantity: item.quantity,
+                  unitPrice: item.unitPrice,
+                })),
+              });
             }}
           />
         )}

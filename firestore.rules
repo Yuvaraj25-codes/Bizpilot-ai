@@ -1,0 +1,392 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Hardened Global Primitives ---
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerified() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function workspaceExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    // --- Validation Blueprints (Anti-Update-Gap) ---
+    function isValidUserWorkspace(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'businessName', 'currency', 'publicMode',
+          'telemetryAlerts', 'lowStockDefault', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'businessName', 'currency', 'publicMode',
+          'telemetryAlerts', 'lowStockDefault', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.businessName is string
+        && data.businessName.size() >= 1
+        && data.businessName.size() <= 120
+        && data.currency is string
+        && data.currency in ['USD', 'EUR', 'GBP', 'INR']
+        && data.publicMode is bool
+        && data.telemetryAlerts is bool
+        && data.lowStockDefault is int
+        && data.lowStockDefault >= 0
+        && data.lowStockDefault <= 100000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrivateProfile(data, userId) {
+      return data.keys().hasAll(['ownerId', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'email', 'displayName', 'createdAt', 'updatedAt'])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 254
+        && data.displayName is string
+        && data.displayName.size() <= 120
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidProduct(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'sku', 'name', 'category', 'costPrice',
+          'retailPrice', 'stockQty', 'lowStockThreshold', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'sku', 'name', 'category', 'costPrice',
+          'retailPrice', 'stockQty', 'lowStockThreshold', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.sku is string
+        && data.sku.size() >= 1
+        && data.sku.size() <= 48
+        && data.sku.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 140
+        && data.category is string
+        && data.category.size() >= 1
+        && data.category.size() <= 64
+        && (data.costPrice is int || data.costPrice is float)
+        && data.costPrice >= 0
+        && (data.retailPrice is int || data.retailPrice is float)
+        && data.retailPrice >= 0
+        && data.stockQty is int
+        && data.stockQty >= 0
+        && data.lowStockThreshold is int
+        && data.lowStockThreshold >= 0
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOrder(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'orderNumber', 'customerName', 'customerPhone',
+          'status', 'items', 'totalAmount', 'totalCost', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'orderNumber', 'customerName', 'customerPhone',
+          'status', 'items', 'totalAmount', 'totalCost', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.orderNumber is string
+        && data.orderNumber.size() >= 1
+        && data.orderNumber.size() <= 32
+        && data.orderNumber.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.customerName is string
+        && data.customerName.size() >= 1
+        && data.customerName.size() <= 120
+        && data.customerPhone is string
+        && data.customerPhone.size() <= 40
+        && data.status is string
+        && data.status in ['pending', 'completed', 'cancelled']
+        && data.items is list
+        && data.items.size() >= 1
+        && data.items.size() <= 25
+        && data.items[0] is map
+        && (data.totalAmount is int || data.totalAmount is float)
+        && data.totalAmount >= 0
+        && (data.totalCost is int || data.totalCost is float)
+        && data.totalCost >= 0
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidExpense(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'title', 'category', 'amount', 'date', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'title', 'category', 'amount', 'date', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 140
+        && data.category is string
+        && data.category in [
+          'Payroll', 'Marketing', 'Logistics', 'Software',
+          'Utilities', 'Inventory Restock', 'Other'
+        ]
+        && (data.amount is int || data.amount is float)
+        && data.amount > 0
+        && data.date is string
+        && data.date.size() >= 1
+        && data.date.size() <= 40
+        && data.notes is string
+        && data.notes.size() <= 300
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidInvoice(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'invoiceNumber', 'orderId', 'customerName', 'customerPhone',
+          'customerEmail', 'items', 'subtotal', 'taxRate', 'taxAmount',
+          'totalAmount', 'status', 'issuedAt', 'dueDate', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'invoiceNumber', 'orderId', 'customerName', 'customerPhone',
+          'customerEmail', 'items', 'subtotal', 'taxRate', 'taxAmount',
+          'totalAmount', 'status', 'issuedAt', 'dueDate', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string
+        && data.ownerId == userId
+        && data.ownerId == request.auth.uid
+        && data.ownerId.size() <= 128
+        && data.invoiceNumber is string
+        && data.invoiceNumber.size() >= 1
+        && data.invoiceNumber.size() <= 32
+        && data.invoiceNumber.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.orderId is string
+        && data.orderId.size() <= 128
+        && data.customerName is string
+        && data.customerName.size() >= 1
+        && data.customerName.size() <= 120
+        && data.customerPhone is string
+        && data.customerPhone.size() <= 40
+        && data.customerEmail is string
+        && data.customerEmail.size() <= 254
+        && data.items is list
+        && data.items.size() >= 1
+        && data.items.size() <= 25
+        && data.items[0] is map
+        && (data.subtotal is int || data.subtotal is float)
+        && data.subtotal >= 0
+        && (data.taxRate is int || data.taxRate is float)
+        && data.taxRate >= 0
+        && (data.taxAmount is int || data.taxAmount is float)
+        && data.taxAmount >= 0
+        && (data.totalAmount is int || data.totalAmount is float)
+        && data.totalAmount >= 0
+        && data.status is string
+        && data.status in ['draft', 'sent', 'paid']
+        && data.issuedAt is string
+        && data.issuedAt.size() >= 1
+        && data.issuedAt.size() <= 40
+        && data.dueDate is string
+        && data.dueDate.size() >= 1
+        && data.dueDate.size() <= 40
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Health Check Probe Collection ---
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // --- User Workspace Root ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserWorkspace(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserWorkspace(incoming(), userId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'businessName', 'currency', 'publicMode', 'telemetryAlerts',
+          'lowStockDefault', 'updatedAt'
+        ]);
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      // --- Isolated Private PII Profile ---
+      match /private/{profileId} {
+        allow get: if isValidId(userId) && isValidId(profileId) && isOwner(userId) && workspaceExists(userId);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(profileId)
+          && profileId == 'profile'
+          && isOwner(userId)
+          && isValidPrivateProfile(incoming(), userId)
+          && workspaceExists(userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(profileId)
+          && profileId == 'profile'
+          && isOwner(userId)
+          && isValidPrivateProfile(incoming(), userId)
+          && workspaceExists(userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'email', 'displayName', 'updatedAt'
+          ]);
+        allow delete: if isValidId(userId) && isValidId(profileId) && isOwner(userId) && workspaceExists(userId);
+      }
+
+      // --- Inventory Products ---
+      match /products/{productId} {
+        allow get: if isValidId(userId) && isValidId(productId) && isOwner(userId) && workspaceExists(userId);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(productId)
+          && isOwner(userId)
+          && isValidProduct(incoming(), userId)
+          && workspaceExists(userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(productId)
+          && isOwner(userId)
+          && isValidProduct(incoming(), userId)
+          && workspaceExists(userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly(['stockQty', 'updatedAt'])
+            || incoming().diff(existing()).affectedKeys().hasOnly([
+              'sku', 'name', 'category', 'costPrice', 'retailPrice',
+              'stockQty', 'lowStockThreshold', 'updatedAt'
+            ])
+          );
+        allow delete: if isValidId(userId) && isValidId(productId) && isOwner(userId) && workspaceExists(userId);
+      }
+
+      // --- Customer Orders ---
+      match /orders/{orderId} {
+        allow get: if isValidId(userId) && isValidId(orderId) && isOwner(userId) && workspaceExists(userId);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(orderId)
+          && isOwner(userId)
+          && isValidOrder(incoming(), userId)
+          && workspaceExists(userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(orderId)
+          && isOwner(userId)
+          && isValidOrder(incoming(), userId)
+          && workspaceExists(userId)
+          && existing().status != 'cancelled'
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidId(orderId) && isOwner(userId) && workspaceExists(userId);
+      }
+
+      // --- Operating Expenses ---
+      match /expenses/{expenseId} {
+        allow get: if isValidId(userId) && isValidId(expenseId) && isOwner(userId) && workspaceExists(userId);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(expenseId)
+          && isOwner(userId)
+          && isValidExpense(incoming(), userId)
+          && workspaceExists(userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(expenseId)
+          && isOwner(userId)
+          && isValidExpense(incoming(), userId)
+          && workspaceExists(userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'category', 'amount', 'date', 'notes', 'updatedAt'
+          ]);
+        allow delete: if isValidId(userId) && isValidId(expenseId) && isOwner(userId) && workspaceExists(userId);
+      }
+
+      // --- Customer Invoices ---
+      match /invoices/{invoiceId} {
+        allow get: if isValidId(userId) && isValidId(invoiceId) && isOwner(userId) && workspaceExists(userId);
+        allow list: if isOwner(userId) && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(invoiceId)
+          && isOwner(userId)
+          && isValidInvoice(incoming(), userId)
+          && workspaceExists(userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(invoiceId)
+          && isOwner(userId)
+          && isValidInvoice(incoming(), userId)
+          && workspaceExists(userId)
+          && existing().status != 'paid'
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidId(invoiceId) && isOwner(userId) && workspaceExists(userId);
+      }
+    }
+  }
+}

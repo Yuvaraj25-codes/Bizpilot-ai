@@ -367,7 +367,7 @@ export function OrderDetailsModal({
                   <select
                     id="order-detail-status"
                     value={order.status}
-                    disabled={statusBusy}
+                    disabled={statusBusy || order.status === 'cancelled'}
                     onChange={(e) =>
                       handleStatusChange(e.target.value as OrderStatus)
                     }
@@ -377,6 +377,11 @@ export function OrderDetailsModal({
                     <option value="pending">Pending</option>
                     <option value="cancelled">Cancelled</option>
                   </select>
+                  {order.status === 'cancelled' && (
+                    <p className="text-[11px] text-slate-500">
+                      Cancelled orders are locked
+                    </p>
+                  )}
                 </div>
               </div>
 

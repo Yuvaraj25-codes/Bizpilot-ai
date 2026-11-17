@@ -66,6 +66,7 @@ export function SalesView({
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
 
   if (createOrderTrigger !== lastTrigger) {
     setLastTrigger(createOrderTrigger);
@@ -143,11 +144,12 @@ export function SalesView({
   };
 
   const handleStatusChange = async (id: string, nextStatus: OrderStatus) => {
+    setStatusError(null);
     setStatusBusyId(id);
     try {
       await onUpdateOrderStatus(id, nextStatus);
     } catch (err: any) {
-      alert(err?.message || 'Failed to update order status');
+      setStatusError(err?.message || 'Failed to update order status');
     } finally {
       setStatusBusyId(null);
     }
@@ -232,6 +234,20 @@ export function SalesView({
           </button>
         </div>
       </div>
+
+      {/* Inline Status Error */}
+      {statusError && (
+        <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300 flex items-center justify-between gap-3">
+          <span>{statusError}</span>
+          <button
+            type="button"
+            onClick={() => setStatusError(null)}
+            className="text-rose-200 hover:text-white cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Orders Table */}
       <div className="bg-[#162033] border border-white/[0.08] rounded-xl overflow-hidden">
@@ -320,22 +336,28 @@ export function SalesView({
                       {formatMoney(order.totalAmount, currency, false)}
                     </td>
                     <td className="py-3.5 px-5 text-right whitespace-nowrap">
-                      <select
-                        aria-label={`Change status for ${order.orderNumber}`}
-                        value={order.status}
-                        disabled={statusBusyId === order.id}
-                        onChange={(e) =>
-                          handleStatusChange(
-                            order.id,
-                            e.target.value as OrderStatus
-                          )
-                        }
-                        className="px-2.5 py-1 text-xs bg-[#101828] border border-white/[0.1] rounded-md text-slate-200 focus:outline-none focus:border-[#3B82F6] cursor-pointer"
-                      >
-                        <option value="completed">Completed</option>
-                        <option value="pending">Pending</option>
-                        <option value="cancelled">Cancelled</option>
-                      </select>
+                      {order.status === 'cancelled' ? (
+                        <span className="text-xs text-slate-500 font-mono">
+                          Locked
+                        </span>
+                      ) : (
+                        <select
+                          aria-label={`Change status for ${order.orderNumber}`}
+                          value={order.status}
+                          disabled={statusBusyId === order.id}
+                          onChange={(e) =>
+                            handleStatusChange(
+                              order.id,
+                              e.target.value as OrderStatus
+                            )
+                          }
+                          className="px-2.5 py-1 text-xs bg-[#101828] border border-white/[0.1] rounded-md text-slate-200 focus:outline-none focus:border-[#3B82F6] cursor-pointer disabled:opacity-50"
+                        >
+                          <option value="completed">Completed</option>
+                          <option value="pending">Pending</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                      )}
                     </td>
                   </tr>
                 ))}

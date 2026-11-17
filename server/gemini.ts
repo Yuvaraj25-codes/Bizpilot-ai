@@ -8,7 +8,13 @@ import type {
   AiActionReceipt,
   ChatMessage,
   DailyAiBrief,
+  Expense,
   ExpenseCategory,
+  Invoice,
+  Order,
+  OrderItem,
+  OrderStatus,
+  Product,
   WorkspaceData,
 } from '../shared/types.js';
 import { computeAnalytics } from './analytics.js';
@@ -19,6 +25,11 @@ import {
   getWorkspace,
   restockProductByIdentifier,
 } from './store.js';
+
+export interface ExecutedToolAction {
+  tool: 'recordExpense' | 'createOrder' | 'createInvoice' | 'restockProduct';
+  args: Record<string, any>;
+}
 
 function getClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -101,9 +112,10 @@ function buildContextSnapshot(workspace: WorkspaceData): string {
 }
 
 export async function generateDailyBusinessBrief(
-  workspaceId: string
+  workspaceId: string,
+  workspaceOverride?: WorkspaceData
 ): Promise<DailyAiBrief> {
-  const workspace = getWorkspace(workspaceId);
+  const workspace = workspaceOverride ?? getWorkspace(workspaceId);
   const ai = getClient();
   const snapshot = buildContextSnapshot(workspace);
 
@@ -307,17 +319,240 @@ const pilotTools: FunctionDeclaration[] = [
   },
 ];
 
+function cloneWorkspace(ws: WorkspaceData): WorkspaceData {
+  return JSON.parse(JSON.stringify(ws)) as WorkspaceData;
+}
+
+function applyToolInMemory(
+  ws: WorkspaceData,
+  toolName: string,
+  args: Record<string, any>
+): {
+  summary: string;
+  toolResult: Record<string, unknown>;
+  executedAction: ExecutedToolAction;
+} {
+  if (toolName === 'recordExpense') {
+    const validCats: ExpenseCategory[] = [
+      'Payroll',
+      'Marketing',
+      'Logistics',
+      'Software',
+      'Utilities',
+      'Inventory Restock',
+      'Other',
+    ];
+    const category = validCats.includes(args.category)
+      ? (args.category as ExpenseCategory)
+      : 'Other';
+    const amount = Number(args.amount || 0);
+    if (amount <= 0) throw new Error('Expense amount must be positive.');
+    const expense: Expense = {
+      id: `exp-${Date.now()}`,
+      title: String(args.title || 'Operating Expense').trim(),
+      category,
+      amount: Number(amount.toFixed(2)),
+      date: new Date().toISOString(),
+      notes: args.notes ? String(args.notes).trim() : '',
+    };
+    ws.expenses.unshift(expense);
+    return {
+      summary: `Recorded ${expense.category} expense "${expense.title}" ($${expense.amount.toFixed(2)})`,
+      toolResult: { success: true, expense },
+      executedAction: {
+        tool: 'recordExpense',
+        args: {
+          title: expense.title,
+          category: expense.category,
+          amount: expense.amount,
+          date: expense.date,
+          notes: expense.notes,
+        },
+      },
+    };
+  }
+
+  if (toolName === 'createOrder') {
+    const rawItems = Array.isArray(args.items) ? args.items : [];
+    if (!rawItems.length) throw new Error('Order requires at least one item.');
+    const status: OrderStatus = args.status === 'pending' ? 'pending' : 'completed';
+    const resolvedItems: OrderItem[] = [];
+    const resolvedForClient: { productId: string; quantity: number }[] = [];
+
+    for (const line of rawItems) {
+      const qty = Math.floor(Number(line.quantity));
+      if (qty <= 0) throw new Error('Item quantity must be at least 1.');
+      const q = String(line.skuOrName || '').trim().toLowerCase();
+      const prod = ws.products.find(
+        (p) => p.sku.toLowerCase() === q || p.name.toLowerCase().includes(q)
+      );
+      if (!prod) throw new Error(`Product "${line.skuOrName}" was not found.`);
+      if (status === 'completed' && prod.stockQty < qty) {
+        throw new Error(
+          `Insufficient stock for ${prod.name} (${prod.stockQty} available, ${qty} requested).`
+        );
+      }
+      if (status === 'completed') {
+        prod.stockQty -= qty;
+      }
+      resolvedItems.push({
+        productId: prod.id,
+        sku: prod.sku,
+        productName: prod.name,
+        quantity: qty,
+        unitPrice: prod.retailPrice,
+        unitCost: prod.costPrice,
+      });
+      resolvedForClient.push({ productId: prod.id, quantity: qty });
+    }
+
+    const orderSeq = 2085 + ws.orders.length;
+    const order: Order = {
+      id: `ord-${Date.now()}`,
+      orderNumber: `ORD-${orderSeq}`,
+      customerName: String(args.customerName || 'Walk-in Customer').trim(),
+      customerPhone: String(args.customerPhone || '+1 (555) 010-0000').trim(),
+      status,
+      items: resolvedItems,
+      totalAmount: resolvedItems.reduce((s, i) => s + i.quantity * i.unitPrice, 0),
+      totalCost: resolvedItems.reduce((s, i) => s + i.quantity * i.unitCost, 0),
+      createdAt: new Date().toISOString(),
+    };
+    ws.orders.unshift(order);
+
+    const taxRate = 8.5;
+    const taxAmount = Number(((order.totalAmount * taxRate) / 100).toFixed(2));
+    const invoice: Invoice = {
+      id: `inv-${Date.now()}`,
+      invoiceNumber: `INV-${orderSeq}`,
+      orderId: order.id,
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      customerEmail: '',
+      items: order.items.map((i) => ({
+        description: `${i.productName} (${i.sku})`,
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+      })),
+      subtotal: order.totalAmount,
+      taxRate,
+      taxAmount,
+      totalAmount: Number((order.totalAmount + taxAmount).toFixed(2)),
+      status: status === 'completed' ? 'paid' : 'sent',
+      issuedAt: order.createdAt,
+      dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    ws.invoices.unshift(invoice);
+
+    return {
+      summary: `Created ${order.status} order ${order.orderNumber} for ${order.customerName} ($${order.totalAmount.toFixed(2)})`,
+      toolResult: { success: true, order, invoice },
+      executedAction: {
+        tool: 'createOrder',
+        args: {
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          status: order.status,
+          items: resolvedForClient,
+          autoCreateInvoice: true,
+        },
+      },
+    };
+  }
+
+  if (toolName === 'createInvoice') {
+    const rawItems = Array.isArray(args.items) ? args.items : [];
+    if (!rawItems.length) throw new Error('Invoice requires at least one item.');
+    const items = rawItems.map((i: any) => ({
+      description: String(i.description || 'Item').trim(),
+      quantity: Math.max(1, Math.floor(Number(i.quantity || 1))),
+      unitPrice: Math.max(0, Number(i.unitPrice || 0)),
+    }));
+    const subtotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+    const taxRate = args.taxRate !== undefined ? Math.max(0, Number(args.taxRate)) : 8.5;
+    const taxAmount = Number(((subtotal * taxRate) / 100).toFixed(2));
+    const totalAmount = Number((subtotal + taxAmount).toFixed(2));
+    const invoice: Invoice = {
+      id: `inv-${Date.now()}`,
+      invoiceNumber: `INV-${2090 + ws.invoices.length}`,
+      customerName: String(args.customerName || 'Client').trim(),
+      customerPhone: '+1 (555) 000-0000',
+      customerEmail: args.customerEmail ? String(args.customerEmail).trim() : '',
+      items,
+      subtotal: Number(subtotal.toFixed(2)),
+      taxRate,
+      taxAmount,
+      totalAmount,
+      status: 'sent',
+      issuedAt: new Date().toISOString(),
+      dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+    ws.invoices.unshift(invoice);
+
+    return {
+      summary: `Issued invoice ${invoice.invoiceNumber} for ${invoice.customerName} ($${invoice.totalAmount.toFixed(2)})`,
+      toolResult: { success: true, invoice },
+      executedAction: {
+        tool: 'createInvoice',
+        args: {
+          customerName: invoice.customerName,
+          customerPhone: invoice.customerPhone,
+          customerEmail: invoice.customerEmail,
+          taxRate: invoice.taxRate,
+          dueDate: invoice.dueDate,
+          status: invoice.status,
+          items,
+        },
+      },
+    };
+  }
+
+  if (toolName === 'restockProduct') {
+    const q = String(args.skuOrName || '').trim().toLowerCase();
+    const addQuantity = Math.floor(Number(args.addQuantity || 0));
+    if (addQuantity <= 0) throw new Error('Restock quantity must be positive.');
+    const prod = ws.products.find(
+      (p) =>
+        p.sku.toLowerCase() === q ||
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase() === q
+    );
+    if (!prod) throw new Error(`Product "${args.skuOrName}" not found.`);
+    prod.stockQty += addQuantity;
+    prod.updatedAt = new Date().toISOString();
+
+    return {
+      summary: `Restocked ${prod.name} (+${addQuantity} -> ${prod.stockQty} units)`,
+      toolResult: { success: true, product: prod },
+      executedAction: {
+        tool: 'restockProduct',
+        args: {
+          productId: prod.id,
+          addQuantity,
+        },
+      },
+    };
+  }
+
+  throw new Error(`Unknown tool: ${toolName}`);
+}
+
 export async function runAiPilotChat(
   workspaceId: string,
   userMessage: string,
-  history: ChatMessage[]
+  history: ChatMessage[],
+  workspaceOverride?: WorkspaceData
 ): Promise<{
   reply: string;
   actionsTaken: AiActionReceipt[];
+  executedActions: ExecutedToolAction[];
   workspace: WorkspaceData;
 }> {
   const ai = getClient();
-  let currentWorkspace = getWorkspace(workspaceId);
+  const useSnapshot = Boolean(workspaceOverride);
+  let currentWorkspace: WorkspaceData = workspaceOverride
+    ? cloneWorkspace(workspaceOverride)
+    : getWorkspace(workspaceId);
   const snapshot = buildContextSnapshot(currentWorkspace);
 
   const systemInstruction =
@@ -347,6 +582,7 @@ export async function runAiPilotChat(
   });
 
   const actionsTaken: AiActionReceipt[] = [];
+  const executedActions: ExecutedToolAction[] = [];
   const functionCalls = firstResponse.functionCalls;
 
   if (functionCalls && functionCalls.length > 0) {
@@ -358,7 +594,19 @@ export async function runAiPilotChat(
       let toolResult: Record<string, unknown>;
 
       try {
-        if (fc.name === 'recordExpense') {
+        if (useSnapshot) {
+          const applied = applyToolInMemory(
+            currentWorkspace,
+            fc.name || '',
+            args
+          );
+          actionsTaken.push({
+            tool: applied.executedAction.tool,
+            summary: applied.summary,
+          });
+          executedActions.push(applied.executedAction);
+          toolResult = applied.toolResult;
+        } else if (fc.name === 'recordExpense') {
           const validCats: ExpenseCategory[] = [
             'Payroll',
             'Marketing',
@@ -460,6 +708,7 @@ export async function runAiPilotChat(
           actionsTaken.map((a) => a.summary).join(' • ') ||
           'Action completed.',
         actionsTaken,
+        executedActions,
         workspace: currentWorkspace,
       };
     }
@@ -470,6 +719,7 @@ export async function runAiPilotChat(
       firstResponse.text?.trim() ||
       'I analyzed your workspace data. Let me know what you would like to inspect or record.',
     actionsTaken,
+    executedActions,
     workspace: currentWorkspace,
   };
 }

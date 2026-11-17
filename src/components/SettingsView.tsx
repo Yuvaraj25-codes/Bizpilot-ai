@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { User } from 'firebase/auth';
 import {
   CheckCircle2,
   Cloud,
+  Database,
   Download,
+  LogIn,
+  LogOut,
   RotateCcw,
   Save,
   Shield,
@@ -16,6 +20,11 @@ import { formatDateTime } from '../lib/formatters.ts';
 
 interface SettingsViewProps {
   workspace: WorkspaceData;
+  firebaseUser: User | null;
+  firebaseSyncing: boolean;
+  firebaseError: string | null;
+  onFirebaseSignIn: () => Promise<void>;
+  onFirebaseSignOut: () => Promise<void>;
   onSaveSettings: (patch: Partial<WorkspaceSettings>) => Promise<void>;
   onResetSession: () => Promise<void>;
   onCloudSync: (syncCode: string, direction: 'push' | 'pull') => Promise<void>;
@@ -23,6 +32,11 @@ interface SettingsViewProps {
 
 export function SettingsView({
   workspace,
+  firebaseUser,
+  firebaseSyncing,
+  firebaseError,
+  onFirebaseSignIn,
+  onFirebaseSignOut,
   onSaveSettings,
   onResetSession,
   onCloudSync,
@@ -37,8 +51,25 @@ export function SettingsView({
   );
   const [syncCode, setSyncCode] = useState(s.syncCode || 'PUBLIC-DEMO');
 
+  useEffect(() => {
+    setBusinessName(s.businessName);
+    setCurrency(s.currency);
+    setPublicMode(s.publicMode);
+    setTelemetryAlerts(s.telemetryAlerts);
+    setLowStockDefault(String(s.lowStockDefault));
+    setSyncCode(s.syncCode || 'PUBLIC-DEMO');
+  }, [
+    s.businessName,
+    s.currency,
+    s.publicMode,
+    s.telemetryAlerts,
+    s.lowStockDefault,
+    s.syncCode,
+  ]);
+
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
 
@@ -98,6 +129,86 @@ export function SettingsView({
           <span>{feedback}</span>
         </div>
       )}
+
+      {/* Firebase Authentication & Real-Time Firestore Sync */}
+      <div className="bg-[#162033] border border-[#3B82F6]/30 rounded-xl p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Database className="w-5 h-5 text-[#06B6D4] mt-0.5 shrink-0" />
+            <div>
+              <h2 className="text-base font-semibold text-white">
+                Firebase Cloud Sync
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {firebaseUser
+                  ? 'Live Firestore persistence and real-time multi-device sync active'
+                  : 'Sign in with Google to persist inventory, orders, expenses, and invoices in your private Firebase Firestore database'}
+              </p>
+            </div>
+          </div>
+
+          {firebaseUser ? (
+            <button
+              type="button"
+              disabled={authBusy}
+              onClick={async () => {
+                setAuthBusy(true);
+                setFeedback(null);
+                try {
+                  await onFirebaseSignOut();
+                  setFeedback('Signed out. Switched back to public demo workspace.');
+                } finally {
+                  setAuthBusy(false);
+                }
+              }}
+              className="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-medium text-slate-200 bg-[#101828] hover:bg-white/[0.06] border border-white/[0.12] rounded-lg whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>{authBusy ? 'Signing out...' : 'Sign Out'}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={authBusy}
+              onClick={async () => {
+                setAuthBusy(true);
+                setFeedback(null);
+                try {
+                  await onFirebaseSignIn();
+                } finally {
+                  setAuthBusy(false);
+                }
+              }}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>
+                {authBusy ? 'Connecting...' : 'Sign In with Google'}
+              </span>
+            </button>
+          )}
+        </div>
+
+        {firebaseError && (
+          <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300">
+            {firebaseError}
+          </div>
+        )}
+
+        {firebaseUser && (
+          <div className="p-3.5 rounded-lg bg-[#101828] border border-white/[0.08] flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="space-y-0.5">
+              <p className="font-medium text-white">
+                {firebaseUser.displayName || 'Workspace Owner'}
+              </p>
+              <p className="text-slate-400 font-mono">{firebaseUser.email}</p>
+            </div>
+            <span className="font-mono text-[#22D3EE]">
+              {firebaseSyncing ? 'Syncing Firestore...' : 'Firestore Connected'}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Workspace & Privacy Shield */}
       <form
@@ -207,17 +318,21 @@ export function SettingsView({
         </div>
       </form>
 
-      {/* Optional Cloud Sync */}
+      {/* Public Session Sync Key & Backup */}
       <div className="bg-[#162033] border border-white/[0.08] rounded-xl p-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3">
             <Cloud className="w-5 h-5 text-[#3B82F6] mt-0.5 shrink-0" />
             <div>
               <h3 className="text-base font-semibold text-white">
-                Optional Cloud Workspace Sync
+                {firebaseUser
+                  ? 'Export JSON Backup'
+                  : 'Optional Cloud Sync Key'}
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Link a custom sync code to persist and restore this workspace across devices without creating an account
+                {firebaseUser
+                  ? 'Download a portable JSON snapshot of your Firestore-synced workspace at any time'
+                  : 'Link a custom sync code to persist and restore the public workspace without signing in'}
               </p>
             </div>
           </div>
@@ -229,45 +344,49 @@ export function SettingsView({
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <input
-            type="text"
-            value={syncCode}
-            onChange={(e) => setSyncCode(e.target.value)}
-            placeholder="MY-TEAM-KEY"
-            className="flex-1 px-3 py-2 text-sm bg-[#101828] border border-white/[0.1] rounded-lg text-white font-mono uppercase focus:outline-none focus:border-[#3B82F6]"
-          />
-          <button
-            type="button"
-            disabled={syncing}
-            onClick={() => handleSync('push')}
-            className="px-4 py-2 text-xs font-semibold text-white bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
-          >
-            Push to Cloud Key
-          </button>
-          <button
-            type="button"
-            disabled={syncing}
-            onClick={() => handleSync('pull')}
-            className="px-4 py-2 text-xs font-medium text-slate-200 bg-[#101828] hover:bg-white/[0.06] border border-white/[0.1] rounded-lg whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
-          >
-            Pull from Key
-          </button>
+          {!firebaseUser && (
+            <>
+              <input
+                type="text"
+                value={syncCode}
+                onChange={(e) => setSyncCode(e.target.value)}
+                placeholder="MY-TEAM-KEY"
+                className="flex-1 px-3 py-2 text-sm bg-[#101828] border border-white/[0.1] rounded-lg text-white font-mono uppercase focus:outline-none focus:border-[#3B82F6]"
+              />
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => handleSync('push')}
+                className="px-4 py-2 text-xs font-semibold text-white bg-[#3B82F6] hover:bg-[#2563EB] rounded-lg whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+              >
+                Push to Cloud Key
+              </button>
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => handleSync('pull')}
+                className="px-4 py-2 text-xs font-medium text-slate-200 bg-[#101828] hover:bg-white/[0.06] border border-white/[0.1] rounded-lg whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-50"
+              >
+                Pull from Key
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={handleDownloadBackup}
             className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-200 bg-[#101828] hover:bg-white/[0.06] border border-white/[0.1] rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>JSON</span>
+            <span>Download JSON Backup</span>
           </button>
         </div>
       </div>
 
-      {/* Reset Public Session */}
+      {/* Reset Workspace */}
       <div className="bg-[#162033] border border-rose-500/25 rounded-xl p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h3 className="text-base font-semibold text-white">
-            Reset Public Session
+            {firebaseUser ? 'Reset Cloud Workspace' : 'Reset Public Session'}
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
             Restore catalog SKUs, sample orders, expenses, and invoices back to clean demo defaults
@@ -281,7 +400,9 @@ export function SettingsView({
             className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-rose-300 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-lg whitespace-nowrap shrink-0 cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset Public Session</span>
+            <span>
+              {firebaseUser ? 'Reset Cloud Workspace' : 'Reset Public Session'}
+            </span>
           </button>
         ) : (
           <div className="flex items-center gap-2 shrink-0">
@@ -297,7 +418,11 @@ export function SettingsView({
               onClick={async () => {
                 await onResetSession();
                 setConfirmReset(false);
-                setFeedback('Public session restored to fresh defaults.');
+                setFeedback(
+                  firebaseUser
+                    ? 'Firestore workspace restored to fresh defaults.'
+                    : 'Public session restored to fresh defaults.'
+                );
               }}
               className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 rounded-lg cursor-pointer"
             >

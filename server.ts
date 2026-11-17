@@ -251,6 +251,7 @@ app.post('/api/ai/daily-brief', async (req, res) => {
   activeBriefRequests.add(id);
 
   try {
+    const workspaceSnapshot = req.body?.workspaceSnapshot;
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(
         () => reject(new Error('Gemini Daily Brief request timed out after 60s.')),
@@ -258,7 +259,7 @@ app.post('/api/ai/daily-brief', async (req, res) => {
       )
     );
     const brief = await Promise.race([
-      generateDailyBusinessBrief(id),
+      generateDailyBusinessBrief(id, workspaceSnapshot),
       timeoutPromise,
     ]);
     res.json({ brief });
@@ -275,7 +276,7 @@ app.post('/api/ai/daily-brief', async (req, res) => {
 app.post('/api/ai/pilot', async (req, res) => {
   try {
     const id = getWorkspaceId(req);
-    const { message, history, range } = req.body || {};
+    const { message, history, range, workspaceSnapshot } = req.body || {};
     if (!message || typeof message !== 'string') {
       res.status(400).json({ error: 'Message text is required.' });
       return;
@@ -283,7 +284,8 @@ app.post('/api/ai/pilot', async (req, res) => {
     const result = await runAiPilotChat(
       id,
       message.trim(),
-      Array.isArray(history) ? history : []
+      Array.isArray(history) ? history : [],
+      workspaceSnapshot
     );
     const analytics = computeAnalytics(
       result.workspace,
@@ -294,6 +296,7 @@ app.post('/api/ai/pilot', async (req, res) => {
     res.json({
       reply: result.reply,
       actionsTaken: result.actionsTaken,
+      executedActions: result.executedActions,
       workspace: result.workspace,
       analytics,
     });

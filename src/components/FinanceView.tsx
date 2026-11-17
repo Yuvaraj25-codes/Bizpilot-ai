@@ -421,13 +421,19 @@ export function FinanceView({
                         <select
                           aria-label={`Invoice status for ${inv.invoiceNumber}`}
                           value={inv.status}
+                          disabled={inv.status === 'paid'}
+                          title={
+                            inv.status === 'paid'
+                              ? 'Paid invoices are locked'
+                              : undefined
+                          }
                           onChange={(e) =>
                             onUpdateInvoiceStatus(
                               inv.id,
                               e.target.value as InvoiceStatus
                             )
                           }
-                          className={`px-2 py-1 rounded-md bg-[#101828] border border-white/[0.1] font-medium capitalize cursor-pointer ${
+                          className={`px-2 py-1 rounded-md bg-[#101828] border border-white/[0.1] font-medium capitalize cursor-pointer disabled:opacity-75 disabled:cursor-default ${
                             inv.status === 'paid'
                               ? 'text-emerald-400'
                               : inv.status === 'sent'
